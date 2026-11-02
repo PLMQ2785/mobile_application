@@ -15,6 +15,19 @@ import com.example.safetymonitor.ui.WorkSafeViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 1. 세 감지기 객체 생성 (팀 아키텍처 명세)
+        val fall = FallDetector(applicationContext)
+        val vital = VitalDetector()
+        val beacon = BeaconDetector()
+
+        // 2. 공통 관리자 (SafetyManager)
+        val safetyManager = SafetyManager(
+            detectors = listOf(fall, vital, beacon),
+            alertSender = HttpAlertSender("http://10.0.2.2:8080/alert")
+        )
+
+        // 3. 화면 띄우기
         setContent {
             val model: WorkSafeViewModel = viewModel()
             val darkTheme = model.darkTheme
