@@ -82,6 +82,9 @@ fun MainScreen(viewModel: WorkSafeViewModel) {
                     )
                     WorkSafePage.HOME -> HomeScreen(
                         profile = profile,
+                        motion = viewModel.motionReading,
+                        fallMessage = viewModel.fallMessage,
+                        fallAlert = viewModel.fallAlert,
                         onLogout = {
                             loginError = null
                             viewModel.logout()

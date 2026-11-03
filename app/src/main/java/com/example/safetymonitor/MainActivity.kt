@@ -1,35 +1,49 @@
 package com.example.safetymonitor
 
 import android.graphics.Color
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.safetymonitor.ui.MainScreen
 import com.example.safetymonitor.ui.WorkSafeTheme
 import com.example.safetymonitor.ui.WorkSafeViewModel
+import com.example.safetymonitor.ui.WorkSafePage
 
 class MainActivity : ComponentActivity() {
+    private val model: WorkSafeViewModel by viewModels()
+    private val notificationPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* Monitoring also works when notification permission is declined. */ }
+
+    override fun onResume() {
+        super.onResume()
+        model.onAppVisible()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. 세 감지기 객체 생성 (팀 아키텍처 명세)
-        val fall = FallDetector(applicationContext)
-        val vital = VitalDetector()
-        val beacon = BeaconDetector()
-
-        // 2. 공통 관리자 (SafetyManager)
-        val safetyManager = SafetyManager(
-            detectors = listOf(fall, vital, beacon),
-            alertSender = HttpAlertSender("http://10.0.2.2:8080/alert")
-        )
-
-        // 3. 화면 띄우기
         setContent {
-            val model: WorkSafeViewModel = viewModel()
+            LaunchedEffect(model.page) {
+                if (model.page != WorkSafePage.LOGIN && Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    val preferences = getSharedPreferences("notification_permission", MODE_PRIVATE)
+                    if (!preferences.getBoolean("requested", false)) {
+                        preferences.edit().putBoolean("requested", true).apply()
+                        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+            }
             val darkTheme = model.darkTheme
             SideEffect {
                 val barStyle = if (darkTheme) {

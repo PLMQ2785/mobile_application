@@ -55,6 +55,12 @@ class FallDetector(
 
     private var listener: ((SafetyEvent) -> Unit)? = null
     private var running = false
+    private var motionListener: ((MotionReading) -> Unit)? = null
+    private var reading = MotionReading()
+    private var lastUiUpdateMillis = 0L
+    private var accelerationAtMillis: Long? = null
+    private var gyroscopeAtMillis: Long? = null
+    private var samplesReady = false
     private var stateEnteredAtMillis = 0L
     private var stillnessStartedAtMillis: Long? = null
 
@@ -79,19 +85,40 @@ class FallDetector(
         this.listener = listener
     }
 
-    // 센서가 있는지 확인한 뒤 가속도계와 자이로스코프 수신을 시작한다. 필요한 센서가 없으면 NORMAL 이벤트로 원인을 전달한다.
+    fun setMotionListener(listener: (MotionReading) -> Unit) {
+        motionListener = listener
+        listener(reading)
+    }
+
+    // 사용 가능한 센서는 표시용으로 수신한다. 낙상 판정에는 두 센서 모두 필요하다.
     override fun start() {
         if (running) return
 
-        if (!sensorsAvailable) {
-            publishNormal("낙상 감지에 필요한 가속도계 또는 자이로스코프가 없습니다.")
-            return
-        }
-
         running = true
-        reset(notify = true)
-        sensorManager.registerListener(this, accelerometer, SensorManager.SENSOR_DELAY_GAME)
-        sensorManager.registerListener(this, gyroscope, SensorManager.SENSOR_DELAY_GAME)
+        accelerationAtMillis = null
+        gyroscopeAtMillis = null
+        samplesReady = false
+        accelerationMagnitude = SensorManager.GRAVITY_EARTH
+        gyroscopeMagnitude = 0f
+        reset(notify = false)
+        val accelerationActive = accelerometer?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        } ?: false
+        val rotationActive = gyroscope?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+        } ?: false
+        reading = MotionReading(
+            accelerometerActive = accelerationActive,
+            gyroscopeActive = rotationActive,
+            monitoring = true
+        )
+        lastUiUpdateMillis = 0L
+        motionListener?.invoke(reading)
+        publishNormal(if (accelerationActive && rotationActive) {
+            "가속도·자이로 센서 수신 대기 중"
+        } else {
+            "낙상 감지 불가: 가속도계 또는 자이로스코프가 없거나 시작할 수 없습니다."
+        })
     }
 
     // 센서 리스너를 해제하고 상태를 초기화한다.
@@ -101,6 +128,11 @@ class FallDetector(
         sensorManager.unregisterListener(this)
         running = false
         reset(notify = false)
+        accelerationAtMillis = null
+        gyroscopeAtMillis = null
+        reading = MotionReading()
+        motionListener?.invoke(reading)
+        publishNormal("센서 측정 중지")
     }
 
     // 상태 머신을 NORMAL 상태로 되돌린다.
@@ -110,15 +142,47 @@ class FallDetector(
 
     // 새로운 센서값을 받으면 3축 합성 크기를 갱신하고 상태 머신을 평가한다.
     override fun onSensorChanged(event: SensorEvent) {
+        if (!running) return
+        val now = SystemClock.elapsedRealtime()
         val magnitude = calculateMagnitude(event.values)
+        val vector = MotionVector(event.values[0], event.values[1], event.values[2], magnitude)
 
         when (event.sensor.type) {
-            Sensor.TYPE_ACCELEROMETER -> accelerationMagnitude = magnitude
-            Sensor.TYPE_GYROSCOPE -> gyroscopeMagnitude = magnitude
+            Sensor.TYPE_ACCELEROMETER -> {
+                accelerationMagnitude = magnitude
+                accelerationAtMillis = now
+                reading = reading.copy(acceleration = vector)
+            }
+            Sensor.TYPE_GYROSCOPE -> {
+                gyroscopeMagnitude = magnitude
+                gyroscopeAtMillis = now
+                reading = reading.copy(gyroscope = vector)
+            }
             else -> return
         }
 
-        evaluate(SystemClock.elapsedRealtime())
+        // Detect with every sample; limit only UI updates to 10 Hz.
+        if (now - lastUiUpdateMillis >= 100L) {
+            lastUiUpdateMillis = now
+            motionListener?.invoke(reading)
+        }
+        val accelerationAt = accelerationAtMillis
+        val rotationAt = gyroscopeAtMillis
+        if (reading.accelerometerActive && reading.gyroscopeActive &&
+            accelerationAt != null && rotationAt != null &&
+            now - accelerationAt <= 500L && now - rotationAt <= 500L
+        ) {
+            if (!samplesReady) {
+                samplesReady = true
+                publishNormal("낙상 감지 정상 작동 중")
+            }
+            evaluate(now)
+        } else {
+            // Never confirm stillness using a stalled sensor's previous value.
+            reset(notify = false)
+            if (samplesReady) publishNormal("센서 수신 지연: 두 센서의 새 측정값 대기 중")
+            samplesReady = false
+        }
     }
 
     // 센서 정확도 변경은 현재 낙상 판정에 사용하지 않는다.
