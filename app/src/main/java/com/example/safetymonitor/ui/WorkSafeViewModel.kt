@@ -5,10 +5,41 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.safetymonitor.detection.fall.FallMonitoringService
+import com.example.safetymonitor.detection.fall.FallMonitoringStore
+import com.example.safetymonitor.detection.fall.MotionReading
+import kotlinx.coroutines.launch
 
 /** Offline demo account only. Credentials and profile never leave this process. */
 class WorkSafeViewModel(application: Application) : AndroidViewModel(application) {
     private val preferences = application.getSharedPreferences("worksafe_theme", 0)
+    var motionReading by mutableStateOf(MotionReading())
+        private set
+    var fallMessage by mutableStateOf("센서 측정 대기 중")
+        private set
+    var fallAlert by mutableStateOf(false)
+        private set
+
+    init {
+        loggedIn = FallMonitoringService.isEnabled(application)
+        viewModelScope.launch {
+            FallMonitoringStore.state.collect {
+                motionReading = it.motion
+                fallMessage = it.message
+                fallAlert = it.alert
+            }
+        }
+    }
+
+    fun onAppVisible() {
+        if (loggedIn && !FallMonitoringStore.state.value.motion.monitoring) {
+            if (!FallMonitoringService.start(getApplication())) {
+                loggedIn = false
+                page = WorkSafePage.LOGIN
+            }
+        }
+    }
     // Account changes survive Activity recreation, but never process death.
     private companion object {
         var demoProfile by mutableStateOf(WorkerProfile())
@@ -28,6 +59,9 @@ class WorkSafeViewModel(application: Application) : AndroidViewModel(application
         if (!accountActive) return "비활성화된 데모 계정입니다. 앱 프로세스를 재시작하면 초기화됩니다."
         if (workerId.trim() != profile.workerId || candidatePassword != password) {
             return "작업자 ID 또는 비밀번호가 올바르지 않습니다."
+        }
+        if (!FallMonitoringService.start(getApplication())) {
+            return "센서 측정을 시작할 수 없습니다. 다시 시도해주세요."
         }
         loggedIn = true
         page = WorkSafePage.HOME
@@ -63,6 +97,7 @@ class WorkSafeViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun logout() {
+        FallMonitoringService.stop(getApplication())
         loggedIn = false
         page = WorkSafePage.LOGIN
     }

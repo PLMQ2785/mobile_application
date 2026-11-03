@@ -20,13 +20,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.safetymonitor.detection.fall.MotionReading
+import java.util.Locale
 
 @Composable
 fun HomeScreen(
     profile: WorkerProfile,
     onLogout: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    motion: MotionReading = MotionReading(),
+    fallMessage: String = "센서 측정 대기 중",
+    fallAlert: Boolean = false
 ) {
+    val detectionReady = motion.monitoring && motion.accelerometerActive &&
+        motion.gyroscopeActive && motion.acceleration != null && motion.gyroscope != null
+    val statusTitle = when {
+        fallAlert -> "낙상 감지됨"
+        !motion.monitoring -> "낙상 감지 중지"
+        !motion.accelerometerActive || !motion.gyroscopeActive -> "낙상 감지 불가"
+        !detectionReady -> "센서 수신 대기"
+        else -> "정상"
+    }
+    val statusTextColor = if (fallAlert) MaterialTheme.colorScheme.onErrorContainer
+        else MaterialTheme.colorScheme.onSurface
     Column(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -45,7 +61,8 @@ fun HomeScreen(
 
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.errorContainer,
+                color = if (fallAlert) MaterialTheme.colorScheme.errorContainer
+                    else MaterialTheme.colorScheme.surfaceVariant,
                 shape = RoundedCornerShape(5.dp)
             ) {
                 Column(
@@ -53,38 +70,55 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        "예시 경고 · 실제 경보 아님",
+                        "실시간 감지 상태",
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.error
+                        color = if (fallAlert) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "낙상 감지",
+                        statusTitle,
                         style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onErrorContainer
+                        color = statusTextColor
                     )
                     Text(
-                        "예시 상태 · 실제 감지/전송 없음",
+                        fallMessage,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer
+                        color = statusTextColor
                     )
                     Surface(
-                        color = MaterialTheme.colorScheme.error,
+                        color = if (fallAlert) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.secondaryContainer,
                         shape = RoundedCornerShape(3.dp)
                     ) {
                         Text(
-                            "HIGH",
+                            when {
+                                fallAlert -> "HIGH"
+                                detectionReady -> "NORMAL"
+                                else -> "대기"
+                            },
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onError
+                            color = if (fallAlert) MaterialTheme.colorScheme.onError
+                                else MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
                 }
             }
 
             WorkSafeCard {
-                Text("센서 정보 · 예시 데이터", style = MaterialTheme.typography.titleMedium)
-                HomeInfoRow("가속도 센서", "24 m/s² · 예시", MaterialTheme.colorScheme.error)
+                Text("센서 정보", style = MaterialTheme.typography.titleMedium)
+                HomeInfoRow(
+                    "가속도 센서",
+                    motion.acceleration?.let {
+                        String.format(Locale.KOREA, "%.2f m/s²", it.magnitude)
+                    } ?: when {
+                        !motion.monitoring -> "측정 중지"
+                        !motion.accelerometerActive -> "사용 불가"
+                        else -> "수신 대기"
+                    },
+                    MaterialTheme.colorScheme.error
+                )
                 HomeInfoRow("BLE 접근 감지", "미감지 · 예시", MaterialTheme.colorScheme.onSurface)
                 HomeInfoRow("Galaxy Watch", "연결됨 · 예시", MaterialTheme.colorScheme.tertiary)
                 HomeInfoRow("심박수", "78 bpm · 예시", MaterialTheme.colorScheme.tertiary)
