@@ -60,19 +60,24 @@ object SosIntegrationChecks {
         check(SosServer.send(SosSession("http://127.0.0.1:1", 77, "expired", Instant.EPOCH), incident).first == SosPhase.FAILED)
         results.appendLine("PASS: 401, 500, mismatched worker, lost response, expired token")
 
-        instrumentation.runOnMainSync { model.testSos() }
+        instrumentation.runOnMainSync {
+            instrumentation.targetContext.startService(android.content.Intent(instrumentation.targetContext,
+                com.example.safetymonitor.detection.fall.FallMonitoringService::class.java)
+                .setAction(SosController.ACTION_TEST))
+        }
         waitFor("real service starts a 20-second local-only countdown") {
             SosStore.state.value.phase == SosPhase.COUNTDOWN && SosStore.state.value.test
         }
-        waitFor("countdown completes without server authentication or transmission", 25_000) {
+        waitFor("local test countdown completes without transmission", 25_000) {
             SosStore.state.value.phase == SosPhase.TEST_DONE
         }
-        // Restart only the local demo session to reset the incident cooldown.
-        instrumentation.runOnMainSync { model.logout() }
-        Thread.sleep(500)
-        instrumentation.runOnMainSync { check(model.login("1024", "0000") == null) }
-        Thread.sleep(500)
-        instrumentation.runOnMainSync { model.testSos() }
+        // Respect the same cooldown as a real incident; never authenticate against production.
+        Thread.sleep(30_100)
+        instrumentation.runOnMainSync {
+            instrumentation.targetContext.startService(android.content.Intent(instrumentation.targetContext,
+                com.example.safetymonitor.detection.fall.FallMonitoringService::class.java)
+                .setAction(SosController.ACTION_TEST))
+        }
         waitFor("second countdown starts") { SosStore.state.value.phase == SosPhase.COUNTDOWN }
         val id = SosStore.state.value.incidentId
         instrumentation.runOnMainSync { model.cancelSos(id) }

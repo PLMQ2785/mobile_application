@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 fun LoginScreen(
     onLogin: (String, String) -> Unit,
     errorMessage: String?,
+    busy: Boolean = false,
+    noticeMessage: String? = null,
     modifier: Modifier = Modifier
 ) {
     var workerId by remember { mutableStateOf("") }
@@ -38,7 +40,7 @@ fun LoginScreen(
         WorkSafeCard {
             Text("작업자 로그인", style = MaterialTheme.typography.titleLarge)
             Text(
-                "관리자가 발급한 작업자 ID로 로그인",
+                "관리자가 발급한 작업자 ID와 비밀번호로 로그인",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -51,7 +53,8 @@ fun LoginScreen(
             placeholder = "숫자 ID 입력",
             keyboardType = KeyboardType.Number,
             imeAction = ImeAction.Next,
-            outlined = true
+            outlined = true,
+            enabled = !busy
         )
         WorkSafeField(
             label = "비밀번호",
@@ -60,9 +63,15 @@ fun LoginScreen(
             placeholder = "비밀번호 입력",
             password = true,
             imeAction = ImeAction.Done,
-            onDone = { onLogin(workerId, password) },
-            outlined = true
+            onDone = { if (!busy) { onLogin(workerId, password); password = "" } },
+            outlined = true,
+            enabled = !busy
         )
+
+        if (noticeMessage != null) {
+            Text(noticeMessage, color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+        }
 
         if (errorMessage != null) {
             Surface(
@@ -82,25 +91,23 @@ fun LoginScreen(
         }
 
         WorkSafeButton(
-            text = "로그인",
-            onClick = { onLogin(workerId, password) },
+            text = if (busy) "로그인 중…" else "로그인",
+            enabled = !busy,
+            onClick = { onLogin(workerId, password); password = "" },
             modifier = Modifier.fillMaxWidth(),
             emphasized = true
         )
 
-        WorkSafeCard(muted = true) {
+        Text(
+            "서버에 등록된 계정으로 로그인합니다. 비밀번호를 잊었다면 관리자에게 재발급을 요청해주세요.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (com.example.safetymonitor.BuildConfig.DEBUG) {
             Text(
-                "개발용 데모 · 실제 인증 아님",
-                style = MaterialTheme.typography.titleMedium
-            )
-            Text(
-                "데모 계정 ID 1024 · 초기 비밀번호 0000",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                "계정·프로필·변경 비밀번호는 앱을 완전히 종료하고 다시 실행하면 초기화됩니다.",
+                "개발용: ID 1024 / 비밀번호 0000으로 서버 없이 시작할 수 있습니다.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.primary
             )
         }
     }

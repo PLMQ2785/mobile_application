@@ -27,6 +27,16 @@ android {
         }
     }
 
+    // Both apps must use the same debug certificate. Keep the key outside Git.
+    providers.gradleProperty("pairDebugKeystore").orNull?.let { keyPath ->
+        signingConfigs.getByName("debug") {
+            storeFile = file(keyPath)
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -36,10 +46,17 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
 dependencies {
+    implementation("com.google.android.gms:play-services-wearable:20.0.1")
+    constraints {
+        implementation("androidx.fragment:fragment:1.8.3") {
+            because("Play services must not introduce Fragment 1.1 with Activity Result APIs")
+        }
+    }
     // --- Compose (BOM으로 버전 일괄 관리) ---
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

@@ -40,5 +40,8 @@ object SosStore {
         }
     }
 
-    fun connect(value: SosSession?) { connection.value = value }
+    fun connect(value: SosSession?) {
+        com.example.safetymonitor.watch.WatchDataRepository.bind(value)
+        connection.value = value
+    }
 }
