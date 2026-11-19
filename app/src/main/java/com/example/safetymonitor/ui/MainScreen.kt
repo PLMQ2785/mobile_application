@@ -19,7 +19,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,9 +31,8 @@ fun MainScreen(
     onStartBeacon: (BeaconRole) -> Unit,
     onResolveBeaconIssue: () -> Unit
 ) {
+    var profileDialog by remember { mutableStateOf<WorkSafeDialogState?>(null) }
     var menuExpanded by remember { mutableStateOf(false) }
-    var loginError by rememberSaveable { mutableStateOf<String?>(null) }
-    var dialog by remember { mutableStateOf<WorkSafeDialogState?>(null) }
     val page = viewModel.page
     val profile = viewModel.profile
     var secretTapCount by remember(page) { mutableIntStateOf(0) }
@@ -55,7 +53,7 @@ fun MainScreen(
     }
     val subtitle = when (page) {
         WorkSafePage.LOGIN -> "작업자 안전 모니터링"
-        WorkSafePage.HOME -> "${profile.name} · ${profile.department} · ID ${profile.workerId}"
+        WorkSafePage.HOME -> "${profile.name.ifBlank { "작업자" }} · ${profile.department.ifBlank { "소속 미등록" }} · ID ${profile.workerId}"
         else -> null
     }
 
@@ -69,7 +67,7 @@ fun MainScreen(
                     title = title,
                     subtitle = subtitle,
                     brand = page == WorkSafePage.LOGIN || page == WorkSafePage.HOME,
-                    onMenuClick = if (page == WorkSafePage.LOGIN) null else {
+                    onMenuClick = if (page == WorkSafePage.LOGIN || viewModel.withdrawBusy) null else {
                         { menuExpanded = !menuExpanded }
                     },
                     onTitleTap = if (page == WorkSafePage.HOME) {
@@ -100,24 +98,35 @@ fun MainScreen(
                 }
             }
             Spacer(Modifier.height(14.dp))
+            if (viewModel.isDevelopment && page != WorkSafePage.LOGIN) {
+                WorkSafeCard {
+                    androidx.compose.material3.Text("개발 모드 · 서버 연결 없음", style = MaterialTheme.typography.titleSmall)
+                    androidx.compose.material3.Text("센서·BLE·워치 수신을 테스트할 수 있습니다. SOS는 연습으로만 동작합니다.",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(Modifier.height(12.dp))
+            }
             Box(Modifier.weight(1f)) {
                 when (page) {
                     WorkSafePage.LOGIN -> LoginScreen(
-                        onLogin = { id, password -> loginError = viewModel.login(id, password) },
-                        errorMessage = loginError
+                        onLogin = viewModel::login,
+                        errorMessage = viewModel.loginError,
+                        busy = viewModel.loginBusy,
+                        noticeMessage = viewModel.loginNotice
                     )
                     WorkSafePage.HOME -> HomeScreen(
                         profile = profile,
                         motion = viewModel.motionReading,
+                        watch = viewModel.watch,
+                        watchNow = viewModel.watchNow,
+                        onRefreshWatch = viewModel::refreshWatch,
                         fallMessage = viewModel.fallMessage,
                         fallAlert = viewModel.fallAlert,
                         beacon = viewModel.beacon,
                         onStartReceiver = { onStartBeacon(BeaconRole.RECEIVER) },
                         onStopBeacon = viewModel::stopBeacon,
                         onResolveBeaconIssue = onResolveBeaconIssue,
-                        sosContent = { SosPanel(viewModel) },
                         onLogout = {
-                            loginError = null
                             viewModel.logout()
                         }
                     )
@@ -137,51 +146,41 @@ fun MainScreen(
                         },
                         onResolveIssue = onResolveBeaconIssue
                     )
+                    WorkSafePage.THEME -> ThemeSettingsScreen(viewModel.darkTheme, viewModel::changeTheme)
                     WorkSafePage.PERSONAL_INFO -> PersonalInfoScreen(profile, onSave = { name, gender, age ->
                         val error = viewModel.updateProfile(name, gender, age)
-                        dialog = if (error == null) {
-                            viewModel.navigate(WorkSafePage.HOME)
-                            WorkSafeDialogState(WorkSafeDialogKind.SUCCESS, "개인 정보가 저장되었습니다.")
-                        } else {
-                            WorkSafeDialogState(WorkSafeDialogKind.FAILURE, error)
-                        }
+                        if (error == null) viewModel.navigate(WorkSafePage.HOME)
+                        profileDialog = WorkSafeDialogState(
+                            if (error == null) WorkSafeDialogKind.SUCCESS else WorkSafeDialogKind.FAILURE,
+                            error ?: "앱 화면에 임시 반영했습니다. 서버에는 저장되지 않으며 로그아웃하거나 앱 프로세스를 종료하면 초기화됩니다.")
                     })
-                    WorkSafePage.THEME -> ThemeSettingsScreen(viewModel.darkTheme, viewModel::changeTheme)
-                    WorkSafePage.PASSWORD -> PasswordSettingsScreen(onSave = { current, new, confirmation ->
-                        val error = viewModel.changePassword(current, new, confirmation)
-                        dialog = if (error == null) {
-                            viewModel.navigate(WorkSafePage.HOME)
-                            WorkSafeDialogState(WorkSafeDialogKind.SUCCESS, "데모 비밀번호가 변경되었습니다.")
-                        } else {
-                            WorkSafeDialogState(WorkSafeDialogKind.FAILURE, error)
+                    WorkSafePage.WITHDRAW -> if (viewModel.isDevelopment) {
+                        WorkSafeCard {
+                            androidx.compose.material3.Text("개발 계정은 서버에 등록되어 있지 않습니다.")
+                            androidx.compose.material3.Text("홈에서 로그아웃하면 개발 모드가 종료됩니다.")
                         }
-                    })
-                    WorkSafePage.WITHDRAW -> WithdrawScreen(onWithdraw = {
-                        dialog = WorkSafeDialogState(
-                            WorkSafeDialogKind.CONFIRM_WITHDRAWAL,
-                            "현재 데모 계정을 비활성화합니다. 앱 프로세스를 재시작하기 전까지 로그인할 수 없습니다."
+                    } else {
+                        WithdrawScreen(
+                            onWithdraw = viewModel::withdraw,
+                            busy = viewModel.withdrawBusy,
+                            errorMessage = viewModel.withdrawError
                         )
-                    })
+                    }
+                    WorkSafePage.PASSWORD -> {
+                        WorkSafeCard {
+                            androidx.compose.material3.Text("서버 계정 관리")
+                            androidx.compose.material3.Text("작업자 ID ${profile.workerId}")
+                            androidx.compose.material3.Text("개인 정보, 비밀번호 재발급 및 계정 비활성화는 관리자에게 요청해주세요.")
+                        }
+                    }
                 }
             }
         }
     }
 
+    profileDialog?.let { state ->
+        WorkSafeDialog(state, onDismiss = { profileDialog = null }, onConfirmWithdrawal = {})
+    }
     SosCountdownDialog(viewModel)
 
-    dialog?.let { state ->
-        WorkSafeDialog(
-            state = state,
-            onDismiss = { dialog = null },
-            onConfirmWithdrawal = {
-                viewModel.withdraw()
-                loginError = null
-                menuExpanded = false
-                dialog = WorkSafeDialogState(
-                    WorkSafeDialogKind.SUCCESS,
-                    "데모 계정이 비활성화되었습니다. 앱 프로세스를 재시작하면 초기화됩니다."
-                )
-            }
-        )
-    }
 }

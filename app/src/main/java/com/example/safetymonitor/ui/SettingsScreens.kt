@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -35,11 +36,13 @@ fun PersonalInfoScreen(
 ) {
     var name by rememberSaveable(profile.name) { mutableStateOf(profile.name) }
     var gender by rememberSaveable(profile.gender) { mutableStateOf(profile.gender) }
-    var age by rememberSaveable(profile.age) { mutableStateOf(profile.age.toString()) }
+    var age by rememberSaveable(profile.age) { mutableStateOf(profile.age.takeIf { it > 0 }?.toString().orEmpty()) }
 
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         WorkSafeCard {
             Text("개인 정보 변경", style = MaterialTheme.typography.titleMedium)
+            Text("현재 수정 내용은 앱 화면에만 임시 반영됩니다. 서버 저장은 아직 연결되지 않았습니다.",
+                style = MaterialTheme.typography.bodySmall)
             WorkSafeField(label = "이름", value = name, onValueChange = { name = it })
             WorkSafeField(label = "성별", value = gender, onValueChange = { gender = it })
             WorkSafeField(
@@ -136,25 +139,54 @@ fun PasswordSettingsScreen(
 }
 
 @Composable
-fun WithdrawScreen(onWithdraw: () -> Unit, modifier: Modifier = Modifier) {
+fun WithdrawScreen(
+    onWithdraw: (String) -> Unit,
+    busy: Boolean,
+    errorMessage: String?,
+    modifier: Modifier = Modifier
+) {
+    var password by remember { mutableStateOf("") }
+    var confirming by remember { mutableStateOf(false) }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         WorkSafeCard {
-            Text(
-                "회원 탈퇴",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.error
+            Text("회원 탈퇴", style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.error)
+            Text("탈퇴하면 서버 계정이 비활성화되고 이름·성별·나이가 익명화됩니다. 기존 안전 이벤트 기록은 보존되며, 이 계정으로 다시 로그인할 수 없습니다.",
+                style = MaterialTheme.typography.bodySmall)
+            WorkSafeField(
+                label = "현재 비밀번호", value = password, onValueChange = { password = it },
+                password = true, enabled = !busy, imeAction = ImeAction.Done,
+                onDone = { if (!busy && password.isNotBlank()) confirming = true }
             )
-            Text(
-                "로컬 데모 계정이 현재 앱 프로세스에서 비활성화됩니다. 앱을 완전히 종료한 뒤 다시 실행하면 초기 데모 계정으로 복원됩니다. 실제 서버의 계정은 변경하지 않습니다.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            errorMessage?.let {
+                Text(it, color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.semantics {
+                        liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite
+                    })
+            }
             WorkSafeButton(
-                text = "회원 탈퇴",
-                onClick = onWithdraw,
-                modifier = Modifier.fillMaxWidth(),
-                danger = true
+                text = if (busy) "탈퇴 처리 중…" else "회원 탈퇴",
+                onClick = { confirming = true },
+                enabled = !busy && password.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(), danger = true
             )
         }
+    }
+    if (confirming) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirming = false },
+            title = { Text("회원 탈퇴를 진행할까요?") },
+            text = { Text("서버 계정이 탈퇴 처리되며 되돌릴 수 없습니다.") },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { confirming = false }) { Text("취소") }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirming = false
+                    onWithdraw(password)
+                    password = ""
+                }) { Text("탈퇴", color = MaterialTheme.colorScheme.error) }
+            }
+        )
     }
 }

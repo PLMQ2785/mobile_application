@@ -42,7 +42,8 @@ class SosStateMachine(initial: SosState = SosState()) {
         val remaining = ((state.deadline - now + 999) / 1000).coerceAtLeast(0).toInt()
         state = state.copy(remainingSeconds = remaining)
         if (now < state.deadline) return false
-        state = state.copy(phase = SosPhase.SENDING, message = "서버에 SOS를 전송하고 있습니다.")
+        state = state.copy(phase = SosPhase.SENDING, message =
+            if (state.test) "SOS 연습을 마무리하고 있습니다." else "서버에 SOS를 전송하고 있습니다.")
         return true
     }
 

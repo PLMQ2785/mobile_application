@@ -41,7 +41,7 @@ class SosController(private val service: Service) {
     fun detect(test: Boolean = false) {
         val session = SosStore.session.value
         if (!machine.detect(UUID.randomUUID().toString(), SystemClock.elapsedRealtime(), System.currentTimeMillis(),
-                session?.workerId, session?.server.orEmpty(), test)) return
+                session?.workerId, session?.server.orEmpty(), test || session?.isDevelopment == true)) return
         target = session
         publish()
         startAlarm()
@@ -70,7 +70,7 @@ class SosController(private val service: Service) {
         val session = target
         val result = when {
             incident.test -> SosPhase.TEST_DONE to "SOS 연습 완료 · 서버로 전송하지 않았습니다."
-            session == null -> SosPhase.FAILED to "서버 계정이 연결되지 않아 전송하지 못했습니다. SOS 서버 연결을 설정하세요."
+            session == null -> SosPhase.FAILED to "서버 계정이 연결되지 않아 전송하지 못했습니다. 앱에 다시 로그인하세요."
             SosStore.session.value !== session -> SosPhase.FAILED to "서버 계정 연결이 변경되어 전송하지 않았습니다."
             else -> withContext(Dispatchers.IO) { SosServer.send(session, incident) }
         }

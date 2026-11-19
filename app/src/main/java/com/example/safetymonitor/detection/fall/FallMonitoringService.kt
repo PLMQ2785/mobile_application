@@ -49,7 +49,7 @@ class FallMonitoringService : Service() {
     @SuppressLint("WakelockTimeout") // Held only for the logged-in monitoring session; released in onDestroy.
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // A queued start must not restart sensing after logout.
-        if (!isEnabled(this)) {
+        if (!isEnabled(this) || (!started && com.example.safetymonitor.sos.SosStore.session.value?.valid() != true)) {
             stopSelf()
             return START_NOT_STICKY
         }

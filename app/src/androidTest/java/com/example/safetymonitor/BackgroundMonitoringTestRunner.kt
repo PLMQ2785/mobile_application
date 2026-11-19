@@ -52,12 +52,18 @@ class BackgroundMonitoringTestRunner : Instrumentation() {
         try {
             shell("input keyevent 224")
             shell("wm dismiss-keyguard")
+            runOnMainSync {
+                FallMonitoringService.stop(targetContext)
+                com.example.safetymonitor.sos.SosStore.connect(null)
+            }
+            await("cleanup leaves no running service") { !serviceExists() }
+            runOnMainSync {
+                com.example.safetymonitor.sos.SosStore.connect(com.example.safetymonitor.sos.SosSession(
+                    "http://127.0.0.1:1", 77, "instrumentation-only", java.time.Instant.MAX))
+            }
             activity = openApp()
             model = getModel(activity)
-            runOnMainSync { checkNotNull(model).logout() }
-            await("logout leaves no running service") { !serviceExists() }
-            runOnMainSync { check(checkNotNull(model).login("1024", "0000") == null) }
-            await("login starts both real sensor streams") {
+            await("authenticated session starts both real sensor streams") {
                 val reading = FallMonitoringStore.state.value.motion
                 reading.acceleration != null && reading.gyroscope != null
             }

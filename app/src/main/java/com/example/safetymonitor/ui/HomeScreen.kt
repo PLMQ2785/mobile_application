@@ -55,9 +55,11 @@ fun HomeScreen(
     onStopBeacon: () -> Unit,
     onResolveBeaconIssue: () -> Unit,
     modifier: Modifier = Modifier,
-    sosContent: @Composable () -> Unit = {},
     motion: MotionReading = MotionReading(),
     fallMessage: String = "센서 측정 대기 중",
+    watch: com.example.safetymonitor.watch.WatchSnapshot = com.example.safetymonitor.watch.WatchSnapshot(),
+    watchNow: Long = System.currentTimeMillis(),
+    onRefreshWatch: () -> Unit = {},
     fallAlert: Boolean = false
 ) {
     val detectionReady = motion.monitoring && motion.accelerometerActive &&
@@ -80,7 +82,6 @@ fun HomeScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            sosContent()
 
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -470,19 +471,39 @@ fun HomeScreen(
                     },
                     MaterialTheme.colorScheme.error
                 )
-                HomeInfoRow("Galaxy Watch", "연결됨 · 예시", MaterialTheme.colorScheme.tertiary)
-                HomeInfoRow("심박수", "78 bpm · 예시", MaterialTheme.colorScheme.tertiary)
-                HomeInfoRow("SpO₂", "98% · 예시", MaterialTheme.colorScheme.primary)
+                HomeInfoRow("Galaxy Watch", watch.connection, MaterialTheme.colorScheme.primary)
+                val summary = watch.summary
+                HomeInfoRow("평균 심박수", summary?.heartRate?.let {
+                    String.format(Locale.KOREA, "%.1f bpm", it)
+                } ?: "측정값 없음", MaterialTheme.colorScheme.onSurface)
+                HomeInfoRow("손목 피부온도", summary?.skinC?.let {
+                    String.format(Locale.KOREA, "%.1f °C", it)
+                } ?: "측정값 없음", MaterialTheme.colorScheme.onSurface)
+                HomeInfoRow("주변 온도", summary?.ambientC?.let {
+                    String.format(Locale.KOREA, "%.1f °C", it)
+                } ?: "측정값 없음", MaterialTheme.colorScheme.onSurface)
+                summary?.let {
+                    val time = java.time.Instant.ofEpochMilli(it.timestamp)
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .format(java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm:ss"))
+                    HomeInfoRow("측정 구간 종료", time, MaterialTheme.colorScheme.onSurfaceVariant)
+                    val stale = it.stale(watchNow)
+                    HomeInfoRow("데이터 상태", if (stale) "업데이트 지연 · 이전 측정값" else "최근 측정 요약",
+                        if (stale) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
+                }
+                Text(watch.notice, style = MaterialTheme.typography.bodySmall)
+                WorkSafeButton("워치 연결 새로고침", onClick = onRefreshWatch,
+                    modifier = Modifier.fillMaxWidth(), secondary = true)
             }
 
             WorkSafeCard(muted = true) {
                 Text("개인 / 작업자 정보", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "이름  ${profile.name}   성별  ${profile.gender}   나이  ${profile.age}",
+                    "이름  ${profile.name.ifBlank { "—" }}   성별  ${profile.gender.ifBlank { "—" }}   나이  ${profile.age.takeIf { it > 0 }?.toString() ?: "—"}",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text(
-                    "직급  ${profile.jobTitle}   소속  ${profile.department}   ID  ${profile.workerId}",
+                    "직급  ${profile.jobTitle.ifBlank { "—" }}   소속  ${profile.department.ifBlank { "—" }}   ID  ${profile.workerId}",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
