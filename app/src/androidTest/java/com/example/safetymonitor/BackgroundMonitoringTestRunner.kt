@@ -53,6 +53,11 @@ class BackgroundMonitoringTestRunner : Instrumentation() {
         fun serviceExists(): Boolean = targetContext.getSystemService(ActivityManager::class.java)
             .getRunningServices(Int.MAX_VALUE).any { it.service.className == FallMonitoringService::class.java.name }
         try {
+            if (checks == "watch-link") {
+                WatchLinkChecks.run(this, results)
+                finish(Activity.RESULT_OK, Bundle().apply { putString("stream", results.toString()) })
+                return
+            }
             if (checks == "accounts" || checks == "monitoring-auth") {
                 if (checks == "accounts") AccountIntegrationChecks.run(this, results)
                 else MonitoringAuthChecks.run(this, results)

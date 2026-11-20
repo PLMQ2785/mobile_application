@@ -13,7 +13,7 @@
 
 낙상 감시와 BLE 비콘 수신·송신은 실제 Android API를 사용합니다.
 BLE 거리·위치는 RSSI 기반의 **근사치**이며 안전 판단용이 아닙니다.
-Galaxy Watch·생체 정보는 예시입니다. 계정과 SOS의 서버 인증 상태는 실제 로그인 세션을 따릅니다.
+Galaxy Watch의 평균 심박수와 손목 피부온도 요약은 Wear OS Data Layer로 수신합니다. 계정과 SOS의 서버 인증 상태는 실제 로그인 세션을 따릅니다.
 
 ## 빌드와 실행
 
@@ -60,6 +60,19 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 빈 개인 정보 입력은 해당 필드를 유지한다는 뜻이며, 모든 입력이 비어 있는 변경은 거절합니다. 로그인 시 프로필을 얻기 위해 빈 PATCH 요청을 보내지 않습니다.
 현재 비밀번호 오류와 유효하지 않은 인증이 같은 HTTP 401로 올 수 있으므로 비밀번호 변경·탈퇴 실패만으로 계정이 삭제되었다고 표시하지 않습니다.
 탈퇴·비밀번호 변경 중 통신이 끊기면 서버 처리 여부가 불확실할 수 있습니다. 자동 재시도하지 않으며, 재로그인 또는 관리자 확인이 필요합니다.
+
+## Galaxy Watch5 연동
+
+워치 앱은 [smart_watch_application `main`의 고정 리비전](https://github.com/mobileProgrammingTeam/smart_watch_application/tree/8353df2d72fb2b7c7e5c52d59fd244cb77f51c80)을 기준으로 합니다. 워치 빌드에는 해당 프로젝트가 안내하는 공식 Samsung Health Sensor SDK AAR가 필요합니다.
+
+1. Galaxy Watch5와 Android 휴대폰을 Wear OS 환경에서 페어링합니다. 양쪽 자동 날짜·시간을 켭니다.
+2. 두 APK의 앱 ID는 `com.example.safetymonitor`이고 **서명 인증서가 같아야** 합니다. 같은 컴퓨터의 기본 디버그 키를 쓰거나 두 빌드에 동일한 디버그 키를 명시합니다. 예: 폰 `./gradlew :app:assembleDebug -PpairDebugKeystore="$HOME/.android/debug.keystore"`, 워치 `./gradlew :wear:assembleDebug -PpairDebugKeystore="$HOME/.android/debug.keystore"`. 키 파일은 Git에 넣지 마세요.
+3. 폰에서 로그인한 **뒤** 워치에서 새 측정을 시작합니다. 5분/10분 주기로 전송하거나 워치의 즉시 전송을 사용합니다. 홈의 **센서 정보**에서 최근 측정 시각, 평균 심박수(bpm), 손목 피부온도(°C)를 확인합니다. 유효값이 없으면 `—`로 표시합니다. 피부온도는 심부체온이 아니며 워치가 보내지 않는 SpO₂는 표시하지 않습니다.
+4. 워치에 `휴대폰 수신 완료`가 뜨면 폰이 최신 요약을 받아 해당 세션에 반영한 것입니다. 수신 확인 메시지는 연결 상황에 따라 유실될 수 있습니다. 로그인 전 시작한 측정은 로그인 후 워치에서 종료하고 새로 시작하세요. 다른 워치로 바꾸려면 폰도 재로그인합니다.
+
+Wear OS Data Layer는 Bluetooth가 연결되면 이를 사용하고, 연결이 없으면 종단간 암호화된 네트워크 경로를 사용할 수 있습니다. BLE 위치 측정과는 별개입니다. 폰 앱은 한 로그인 세션에 워치 하나의 최신 요약만 메모리에 보관하며, 로그아웃 후 재사용하거나 자체 서버·디스크에 저장하지 않습니다. Google Play 서비스의 Data Layer 캐시는 별개입니다. 기기와 앱을 확인하는 연동이며 착용자의 신원을 확인하거나 SOS·의료 판단에 사용하지 않습니다.
+
+Pixel_4a AVD의 `BackgroundMonitoringTestRunner`에서 `-e checks watch-link`로 검증했습니다. 합성 워치 요약을 모바일 수신 처리기에 전달해 형식·송신자·세션 검사, 수신 확인 응답, 홈의 측정값 표시와 같은 계정 재로그인 시 이전 값 미표시를 확인했습니다. 실제 Galaxy Watch5 ↔ S23 Ultra 페어링·Bluetooth 전송·워치의 수신 확인 표시는 아직 검증하지 않았습니다.
 
 ## BLE 거리·2D 위치 데모
 
@@ -131,6 +144,7 @@ export ANDROID_HOME="$HOME/Library/Android/sdk"
 - `ui/SettingsScreens.kt`, `ui/WorkSafeDialogs.kt`: 설정 화면, 메뉴와 다이얼로그.
 - `ui/BeaconScreens.kt`: 비콘 목록·근사 위치 그림과 숨김 송신 설정.
 - `detection/beacon/`: 전용 광고 프로토콜, RSSI·2D 계산, 실제 스캔·광고, BLE 서비스·권한·설정.
+- `wear/`, `ui/WatchVitalsContent.kt`: Watch 요약 수신·세션 범위 검증·수신 확인과 홈 표시.
 
 낙상·BLE 감시 서비스는 앱에서 실제로 시작·중지합니다.
 기존 `SafetyManager`·HTTP 서버 전송 경로는 연결하지 않았습니다.
@@ -150,7 +164,7 @@ ADB/UIAutomator 조작 및 실제 스크린샷으로 다음을 확인했습니�
 - 짧은 화면에서 키보드가 열려도 헤더가 유지되고, 폼을 스크롤해 저장 버튼 실행 가능.
 
 위 항목은 기존 베이스 UI의 검증 기록입니다. BLE 추가 검증 범위는 별도 항목을 따릅니다.
-Watch·생체 정보 및 서버 API 연동은 검증 범위가 아닙니다.
+이 기록에는 이후 추가된 Watch·생체 정보 및 서버 API 연동 검증이 포함되지 않습니다.
 
 ## 실시간 센서 화면 및 Android Studio 실행
 

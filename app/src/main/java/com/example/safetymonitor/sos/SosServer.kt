@@ -1,5 +1,6 @@
 package com.example.safetymonitor.sos
 
+import com.example.safetymonitor.wear.WatchInbox
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URI
@@ -7,6 +8,8 @@ import java.time.Instant
 
 // Tokens/passwords are never written to disk or logs. Reconnect after process death.
 class SosSession(val server: String, val workerId: Long, val token: String, val expiresAt: Instant) {
+    val watchInbox = WatchInbox(System.currentTimeMillis())
+
     fun valid() = Instant.now().isBefore(expiresAt)
     override fun toString() = "SosSession(workerId=$workerId)"
 }

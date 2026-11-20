@@ -17,6 +17,16 @@ android {
         testInstrumentationRunner = "com.example.safetymonitor.BackgroundMonitoringTestRunner"
     }
 
+    // Match the watch's optional shared debug key; otherwise use normal debug signing.
+    providers.gradleProperty("pairDebugKeystore").orNull?.let { keyPath ->
+        signingConfigs.getByName("debug") {
+            storeFile = file(keyPath)
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
             // 팀 개발 중 빠른 빌드를 위해 최적화 생략
@@ -56,6 +66,8 @@ dependencies {
     // --- Coroutines ---
     // Flow 기반 비동기 감지 결과 전달에 사용
     implementation(libs.coroutines.android)
+
+    implementation(libs.play.wearable)
 
     // --- Testing ---
     testImplementation(libs.junit)

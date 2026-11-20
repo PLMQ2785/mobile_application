@@ -6,6 +6,7 @@ coroutines     = "1.8.1"
 lifecycle      = "2.8.5"
 activity-compose = "1.9.2"
 junit          = "4.13.2"
+play-wearable  = "20.0.1"
 
 [libraries]
 # Compose BOM — BOM 하나로 Compose 전체 버전을 일괄 관리
@@ -23,6 +24,8 @@ lifecycle-runtime-ktx       = { group = "androidx.lifecycle",   name = "lifecycl
 
 # Coroutines
 coroutines-android          = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+
+play-wearable               = { group = "com.google.android.gms", name = "play-services-wearable", version.ref = "play-wearable" }
 
 # Testing
 junit                       = { group = "junit",                 name = "junit",                      version.ref = "junit" }

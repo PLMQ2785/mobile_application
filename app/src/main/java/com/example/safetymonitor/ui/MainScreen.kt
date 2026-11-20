@@ -17,6 +17,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -123,7 +124,11 @@ fun MainScreen(
                         onStartReceiver = { onStartBeacon(BeaconRole.RECEIVER) },
                         onStopBeacon = viewModel::stopBeacon,
                         onResolveBeaconIssue = onResolveBeaconIssue,
-                        sosContent = { SosPanel(viewModel) },
+                        watchContent = {
+                            key(viewModel.sosSession) {
+                                WatchVitalsContent(viewModel.sosSession)
+                            }
+                        },
                         onLogout = {
                             if (!viewModel.accountBusy) scope.launch {
                                 loginError = viewModel.logout()

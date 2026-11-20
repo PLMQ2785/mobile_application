@@ -54,6 +54,7 @@ fun HomeScreen(
     onStartReceiver: () -> Unit,
     onStopBeacon: () -> Unit,
     onResolveBeaconIssue: () -> Unit,
+    watchContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     sosContent: @Composable () -> Unit = {},
     motion: MotionReading = MotionReading(),
@@ -456,7 +457,7 @@ fun HomeScreen(
                 }
             }
 
-            // Preserved sensor info card (real motion rows + other examples)
+            // The watch rows reflect only the latest summary received in this session.
             WorkSafeCard {
                 Text("센서 정보", style = MaterialTheme.typography.titleMedium)
                 HomeInfoRow(
@@ -470,9 +471,7 @@ fun HomeScreen(
                     },
                     MaterialTheme.colorScheme.error
                 )
-                HomeInfoRow("Galaxy Watch", "연결됨 · 예시", MaterialTheme.colorScheme.tertiary)
-                HomeInfoRow("심박수", "78 bpm · 예시", MaterialTheme.colorScheme.tertiary)
-                HomeInfoRow("SpO₂", "98% · 예시", MaterialTheme.colorScheme.primary)
+                watchContent()
             }
 
             WorkSafeCard(muted = true) {

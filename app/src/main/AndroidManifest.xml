@@ -40,6 +40,18 @@
             android:stopWithTask="false"
             android:foregroundServiceType="location|connectedDevice" />
 
+        <service
+            android:name=".wear.WatchSummaryListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:host="*"
+                    android:path="/workersafety/summary"
+                    android:scheme="wear" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
