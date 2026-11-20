@@ -44,20 +44,6 @@ object SosServer {
         } finally { connection.disconnect() }
     }
 
-    fun login(server: String, workerId: Long, password: String): SosSession {
-        val (code, body) = request(server, "/api/worker/auth/login",
-            JSONObject().put("workerId", workerId).put("password", password))
-        require(code == 200) {
-            if (code == 401 || code == 403) "작업자 ID 또는 비밀번호를 확인하세요."
-            else "서버 로그인 실패 (HTTP $code)"
-        }
-        val json = JSONObject(body)
-        val token = json.getString("accessToken")
-        require(token.isNotBlank()) { "서버 인증 응답을 확인하세요." }
-        return SosSession(server, workerId, token, Instant.parse(json.getString("expiresAt")))
-    }
-
-    fun logout(session: SosSession) { runCatching { request(session.server, "/api/worker/auth/logout", null, session.token) } }
 
     fun send(session: SosSession, state: SosState): Pair<SosPhase, String> {
         if (!session.valid()) return SosPhase.FAILED to "인증이 만료되어 전송하지 못했습니다. 서버에 다시 로그인하세요."

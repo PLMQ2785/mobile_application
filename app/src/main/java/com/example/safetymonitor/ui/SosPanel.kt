@@ -12,7 +12,6 @@ import com.example.safetymonitor.sos.*
 
 @Composable
 fun SosPanel(model: WorkSafeViewModel) {
-    var settings by remember { mutableStateOf(false) }
     val state = model.sos
     val session = model.sosSession
     WorkSafeCard {
@@ -31,39 +30,12 @@ fun SosPanel(model: WorkSafeViewModel) {
             Text(if (state.test) "최근 알람: 연습" else "최근 알람 전송 대상: ${state.workerId?.let { "작업자 $it" } ?: "연결 없음"}",
                 style = MaterialTheme.typography.bodySmall)
         }
-        WorkSafeButton("SOS 서버 연결", { settings = true }, enabled = !state.active && !model.sosConnecting)
+        Text("로그인한 서버 계정으로 SOS를 전송합니다. 앱 프로세스가 종료되면 다시 로그인하세요.",
+            style = MaterialTheme.typography.bodySmall)
         if (model.sosTestAvailable) {
             WorkSafeButton("알람 연습 · 서버 전송 없음", model::testSos,
                 secondary = true, enabled = !state.active)
         }
-        Text("앱 데모 계정과 별도로 위 서버 계정에 전송합니다. 앱 프로세스가 종료되면 다시 연결하세요.",
-            style = MaterialTheme.typography.bodySmall)
-    }
-    if (settings) {
-        var url by remember { mutableStateOf(model.sosServerAddress) }
-        var worker by remember { mutableStateOf(session?.workerId?.toString().orEmpty()) }
-        var password by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { if (!model.sosConnecting) settings = false },
-            title = { Text("SOS 서버 연결") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("관리자가 발급한 실제 서버 작업자 계정을 입력하세요.")
-                    WorkSafeField("서버 주소", url, { url = it }, keyboardType = KeyboardType.Uri)
-                    WorkSafeField("작업자 ID", worker, { worker = it }, keyboardType = KeyboardType.Number)
-                    WorkSafeField("비밀번호", password, { password = it }, password = true)
-                    model.sosConnectionMessage?.let { Text(it) }
-                    if (url.startsWith("http://")) Text("현재 HTTP 연결은 암호화되지 않습니다.", style = MaterialTheme.typography.bodySmall)
-                }
-            },
-            confirmButton = {
-                TextButton(enabled = !model.sosConnecting && !state.active, onClick = {
-                    model.connectSos(url, worker, password)
-                    password = ""
-                }) { Text(if (model.sosConnecting) "연결 중…" else "연결") }
-            },
-            dismissButton = { TextButton(enabled = !model.sosConnecting, onClick = { settings = false }) { Text("닫기") } }
-        )
     }
 }
 

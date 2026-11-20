@@ -7,6 +7,9 @@ import org.json.JSONObject
 import java.net.ServerSocket
 import java.time.Instant
 import kotlin.concurrent.thread
+import kotlinx.coroutines.runBlocking
+import com.example.safetymonitor.network.WorkerApiClient
+import com.example.safetymonitor.network.WorkerLoginRequest
 
 /** Uses loopback only; never creates events on the team's deployed server. */
 object SosIntegrationChecks {
@@ -18,8 +21,9 @@ object SosIntegrationChecks {
         }
 
         var testSession: SosSession? = null
-        mockResponse(200, """{"accessToken":"test-token","expiresAt":"2099-01-01T00:00:00Z"}""") { url, request ->
-            testSession = SosServer.login(url, 77, "local-test-password")
+        mockResponse(200, """{"accessToken":"test-token","tokenType":"Bearer","expiresAt":"2099-01-01T00:00:00Z"}""") { url, request ->
+            val token = runBlocking { WorkerApiClient(url, true).login(WorkerLoginRequest(77, "local-test-password")) }
+            testSession = SosSession(url, 77, token.accessToken, token.expiresAt)
             request.join()
             check(request.firstLine == "POST /api/worker/auth/login HTTP/1.1")
             check(JSONObject(request.body).getLong("workerId") == 77L)
@@ -67,10 +71,8 @@ object SosIntegrationChecks {
         waitFor("countdown completes without server authentication or transmission", 25_000) {
             SosStore.state.value.phase == SosPhase.TEST_DONE
         }
-        // Restart only the local demo session to reset the incident cooldown.
-        instrumentation.runOnMainSync { model.logout() }
-        Thread.sleep(500)
-        instrumentation.runOnMainSync { check(model.login("1024", "0000") == null) }
+        runBlocking { model.logout() }
+        AccountIntegrationChecks.loginFixture(model)
         Thread.sleep(500)
         instrumentation.runOnMainSync { model.testSos() }
         waitFor("second countdown starts") { SosStore.state.value.phase == SosPhase.COUNTDOWN }

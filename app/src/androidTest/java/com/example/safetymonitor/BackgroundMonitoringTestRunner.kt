@@ -12,11 +12,14 @@ import com.example.safetymonitor.detection.fall.FallMonitoringService
 import com.example.safetymonitor.detection.fall.FallMonitoringStore
 import com.example.safetymonitor.ui.WorkSafePage
 import com.example.safetymonitor.ui.WorkSafeViewModel
+import kotlinx.coroutines.runBlocking
 
 /** Device integration checks, without an additional test-library dependency. */
 class BackgroundMonitoringTestRunner : Instrumentation() {
+    private var checks: String? = null
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
+        checks = arguments?.getString("checks")
         start()
     }
 
@@ -50,13 +53,19 @@ class BackgroundMonitoringTestRunner : Instrumentation() {
         fun serviceExists(): Boolean = targetContext.getSystemService(ActivityManager::class.java)
             .getRunningServices(Int.MAX_VALUE).any { it.service.className == FallMonitoringService::class.java.name }
         try {
+            if (checks == "accounts" || checks == "monitoring-auth") {
+                if (checks == "accounts") AccountIntegrationChecks.run(this, results)
+                else MonitoringAuthChecks.run(this, results)
+                finish(Activity.RESULT_OK, Bundle().apply { putString("stream", results.toString()) })
+                return
+            }
             shell("input keyevent 224")
             shell("wm dismiss-keyguard")
             activity = openApp()
             model = getModel(activity)
-            runOnMainSync { checkNotNull(model).logout() }
+            runBlocking { checkNotNull(model).logout() }
             await("logout leaves no running service") { !serviceExists() }
-            runOnMainSync { check(checkNotNull(model).login("1024", "0000") == null) }
+            AccountIntegrationChecks.loginFixture(checkNotNull(model))
             await("login starts both real sensor streams") {
                 val reading = FallMonitoringStore.state.value.motion
                 reading.acceleration != null && reading.gyroscope != null
@@ -94,7 +103,7 @@ class BackgroundMonitoringTestRunner : Instrumentation() {
             await("reopened screen retains the logged-in session and live readings") {
                 model.page == WorkSafePage.HOME && model.motionReading.acceleration != null
             }
-            runOnMainSync { model.logout() }
+            runBlocking { model.logout() }
             await("logout stops service and clears sensor readings") {
                 !serviceExists() && !FallMonitoringStore.state.value.motion.monitoring &&
                     FallMonitoringStore.state.value.motion.acceleration == null
@@ -110,7 +119,8 @@ class BackgroundMonitoringTestRunner : Instrumentation() {
             results.appendLine(error.stackTraceToString())
             finish(Activity.RESULT_CANCELED, Bundle().apply { putString("stream", results.toString()) })
         } finally {
-            runOnMainSync { model?.logout(); activity?.finish() }
+            runBlocking { model?.logout() }
+            runOnMainSync { activity?.finish() }
         }
     }
 }

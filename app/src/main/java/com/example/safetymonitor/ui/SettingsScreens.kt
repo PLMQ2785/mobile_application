@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -31,29 +34,31 @@ import androidx.compose.ui.unit.dp
 fun PersonalInfoScreen(
     profile: WorkerProfile,
     onSave: (String, String, String) -> Unit,
+    busy: Boolean,
     modifier: Modifier = Modifier
 ) {
     var name by rememberSaveable(profile.name) { mutableStateOf(profile.name) }
     var gender by rememberSaveable(profile.gender) { mutableStateOf(profile.gender) }
-    var age by rememberSaveable(profile.age) { mutableStateOf(profile.age.toString()) }
+    var age by rememberSaveable(profile.age) { mutableStateOf(profile.age?.toString().orEmpty()) }
 
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         WorkSafeCard {
             Text("개인 정보 변경", style = MaterialTheme.typography.titleMedium)
-            WorkSafeField(label = "이름", value = name, onValueChange = { name = it })
-            WorkSafeField(label = "성별", value = gender, onValueChange = { gender = it })
+            Text("빈 항목은 변경하지 않습니다. 성별: M(남), F(여), U(미상); 나이: 0–150")
+            WorkSafeField(label = "이름", value = name, onValueChange = { name = it }, enabled = !busy)
+            WorkSafeField(label = "성별 (M/F/U)", value = gender, onValueChange = { gender = it }, enabled = !busy)
             WorkSafeField(
                 label = "나이",
                 value = age,
                 onValueChange = { age = it },
                 keyboardType = KeyboardType.Number,
                 imeAction = ImeAction.Done,
-                onDone = { onSave(name, gender, age) }
+                onDone = { if (!busy) onSave(name, gender, age) }, enabled = !busy
             )
             WorkSafeButton(
-                text = "변경사항 저장",
-                onClick = { onSave(name, gender, age) },
-                modifier = Modifier.fillMaxWidth()
+                text = if (busy) "저장 중…" else "변경사항 저장",
+                onClick = { if (!busy) onSave(name, gender, age) },
+                modifier = Modifier.fillMaxWidth(), enabled = !busy
             )
         }
     }
@@ -95,27 +100,39 @@ fun ThemeSettingsScreen(
 @Composable
 fun PasswordSettingsScreen(
     onSave: (String, String, String) -> Unit,
+    busy: Boolean,
     modifier: Modifier = Modifier
 ) {
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
+    val submit = {
+        if (!busy) {
+            val current = currentPassword
+            val new = newPassword
+            val confirm = confirmation
+            currentPassword = ""; newPassword = ""; confirmation = ""
+            onSave(current, new, confirm)
+        }
+    }
 
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         WorkSafeCard {
             Text("비밀번호 변경", style = MaterialTheme.typography.titleMedium)
+            Text("새 비밀번호는 12–64 UTF-16 단위, UTF-8 72바이트 이하여야 합니다.",
+                style = MaterialTheme.typography.bodySmall)
             WorkSafeField(
                 label = "현재 비밀번호",
                 value = currentPassword,
                 onValueChange = { currentPassword = it },
-                password = true
+                password = true, enabled = !busy
             )
             WorkSafeField(
                 label = "새 비밀번호",
                 value = newPassword,
                 onValueChange = { newPassword = it },
                 placeholder = "새 비밀번호 입력",
-                password = true
+                password = true, enabled = !busy
             )
             WorkSafeField(
                 label = "새 비밀번호 확인",
@@ -124,37 +141,55 @@ fun PasswordSettingsScreen(
                 placeholder = "다시 입력",
                 password = true,
                 imeAction = ImeAction.Done,
-                onDone = { onSave(currentPassword, newPassword, confirmation) }
+                onDone = submit, enabled = !busy
             )
             WorkSafeButton(
-                text = "비밀번호 변경",
-                onClick = { onSave(currentPassword, newPassword, confirmation) },
-                modifier = Modifier.fillMaxWidth()
+                text = if (busy) "변경 중…" else "비밀번호 변경",
+                onClick = submit,
+                modifier = Modifier.fillMaxWidth(), enabled = !busy
             )
         }
     }
 }
 
 @Composable
-fun WithdrawScreen(onWithdraw: () -> Unit, modifier: Modifier = Modifier) {
+fun WithdrawScreen(
+    server: String,
+    workerId: String,
+    busy: Boolean,
+    onWithdraw: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var password by remember { mutableStateOf("") }
+    var confirming by remember { mutableStateOf(false) }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         WorkSafeCard {
-            Text(
-                "회원 탈퇴",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.error
-            )
-            Text(
-                "로컬 데모 계정이 현재 앱 프로세스에서 비활성화됩니다. 앱을 완전히 종료한 뒤 다시 실행하면 초기 데모 계정으로 복원됩니다. 실제 서버의 계정은 변경하지 않습니다.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text("회원 탈퇴", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.error)
+            Text("서버 계정을 삭제합니다. 이 작업은 되돌릴 수 없습니다.", style = MaterialTheme.typography.bodySmall)
+            WorkSafeField("현재 비밀번호", password, { password = it }, password = true, enabled = !busy)
             WorkSafeButton(
-                text = "회원 탈퇴",
-                onClick = onWithdraw,
-                modifier = Modifier.fillMaxWidth(),
-                danger = true
+                text = if (busy) "처리 중…" else "회원 탈퇴",
+                onClick = { if (!busy) confirming = true },
+                modifier = Modifier.fillMaxWidth(), danger = true, enabled = !busy && password.isNotEmpty()
             )
         }
+    }
+    if (confirming) {
+        AlertDialog(
+            onDismissRequest = { if (!busy) { confirming = false; password = "" } },
+            title = { Text("계정 삭제 확인") },
+            text = { Text("서버 $server 의 작업자 ID $workerId 계정을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.") },
+            confirmButton = {
+                TextButton(enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error), onClick = {
+                    val submitted = password
+                    password = ""
+                    confirming = false
+                    onWithdraw(submitted)
+                }) { Text("삭제") }
+            },
+            dismissButton = {
+                TextButton(enabled = !busy, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface), onClick = { confirming = false; password = "" }) { Text("취소") }
+            }
+        )
     }
 }

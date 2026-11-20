@@ -478,11 +478,11 @@ fun HomeScreen(
             WorkSafeCard(muted = true) {
                 Text("개인 / 작업자 정보", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "이름  ${profile.name}   성별  ${profile.gender}   나이  ${profile.age}",
+                    "이름  ${profile.name.ifBlank { "알 수 없음" }}   성별  ${profile.gender.ifBlank { "알 수 없음" }}   나이  ${profile.age?.toString() ?: "알 수 없음"}",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text(
-                    "직급  ${profile.jobTitle}   소속  ${profile.department}   ID  ${profile.workerId}",
+                    "ID  ${profile.workerId}",
                     style = MaterialTheme.typography.bodySmall
                 )
             }

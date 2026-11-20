@@ -20,11 +20,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.safetymonitor.detection.beacon.BeaconRole
+import kotlinx.coroutines.launch
 
 @Composable
 fun MainScreen(
@@ -36,11 +38,13 @@ fun MainScreen(
     var loginError by rememberSaveable { mutableStateOf<String?>(null) }
     var dialog by remember { mutableStateOf<WorkSafeDialogState?>(null) }
     val page = viewModel.page
+    val scope = rememberCoroutineScope()
     val profile = viewModel.profile
     var secretTapCount by remember(page) { mutableIntStateOf(0) }
     var secretTapStartedAt by remember(page) { mutableLongStateOf(0L) }
 
-    BackHandler(enabled = page != WorkSafePage.LOGIN && page != WorkSafePage.HOME) {
+    BackHandler(enabled = viewModel.accountBusy) { }
+    BackHandler(enabled = page != WorkSafePage.LOGIN && page != WorkSafePage.HOME && !viewModel.accountBusy) {
         menuExpanded = false
         viewModel.navigate(WorkSafePage.HOME)
     }
@@ -55,7 +59,7 @@ fun MainScreen(
     }
     val subtitle = when (page) {
         WorkSafePage.LOGIN -> "작업자 안전 모니터링"
-        WorkSafePage.HOME -> "${profile.name} · ${profile.department} · ID ${profile.workerId}"
+        WorkSafePage.HOME -> "${profile.name.ifBlank { "이름 미상" }} · ID ${profile.workerId}"
         else -> null
     }
 
@@ -69,10 +73,10 @@ fun MainScreen(
                     title = title,
                     subtitle = subtitle,
                     brand = page == WorkSafePage.LOGIN || page == WorkSafePage.HOME,
-                    onMenuClick = if (page == WorkSafePage.LOGIN) null else {
+                    onMenuClick = if (page == WorkSafePage.LOGIN || viewModel.accountBusy) null else {
                         { menuExpanded = !menuExpanded }
                     },
-                    onTitleTap = if (page == WorkSafePage.HOME) {
+                    onTitleTap = if (page == WorkSafePage.HOME && !viewModel.accountBusy) {
                         {
                             val now = SystemClock.elapsedRealtime()
                             if (secretTapCount == 0 || now - secretTapStartedAt >= 3_000L) {
@@ -103,7 +107,11 @@ fun MainScreen(
             Box(Modifier.weight(1f)) {
                 when (page) {
                     WorkSafePage.LOGIN -> LoginScreen(
-                        onLogin = { id, password -> loginError = viewModel.login(id, password) },
+                        onLogin = { server, id, password ->
+                            scope.launch { loginError = viewModel.login(server, id, password) }
+                        },
+                        serverAddress = viewModel.serverAddress,
+                        busy = viewModel.accountBusy,
                         errorMessage = loginError
                     )
                     WorkSafePage.HOME -> HomeScreen(
@@ -117,8 +125,9 @@ fun MainScreen(
                         onResolveBeaconIssue = onResolveBeaconIssue,
                         sosContent = { SosPanel(viewModel) },
                         onLogout = {
-                            loginError = null
-                            viewModel.logout()
+                            if (!viewModel.accountBusy) scope.launch {
+                                loginError = viewModel.logout()
+                            }
                         }
                     )
                     WorkSafePage.BEACON_TRANSMITTER -> BeaconTransmitterScreen(
@@ -137,31 +146,37 @@ fun MainScreen(
                         },
                         onResolveIssue = onResolveBeaconIssue
                     )
-                    WorkSafePage.PERSONAL_INFO -> PersonalInfoScreen(profile, onSave = { name, gender, age ->
-                        val error = viewModel.updateProfile(name, gender, age)
-                        dialog = if (error == null) {
-                            viewModel.navigate(WorkSafePage.HOME)
-                            WorkSafeDialogState(WorkSafeDialogKind.SUCCESS, "개인 정보가 저장되었습니다.")
-                        } else {
-                            WorkSafeDialogState(WorkSafeDialogKind.FAILURE, error)
+                    WorkSafePage.PERSONAL_INFO -> PersonalInfoScreen(profile, busy = viewModel.accountBusy, onSave = { name, gender, age ->
+                        scope.launch {
+                            val error = viewModel.updateProfile(name, gender, age)
+                            dialog = if (error == null) {
+                                viewModel.navigate(WorkSafePage.HOME)
+                                WorkSafeDialogState(WorkSafeDialogKind.SUCCESS, "개인 정보가 저장되었습니다.")
+                            } else WorkSafeDialogState(WorkSafeDialogKind.FAILURE, error)
                         }
                     })
                     WorkSafePage.THEME -> ThemeSettingsScreen(viewModel.darkTheme, viewModel::changeTheme)
-                    WorkSafePage.PASSWORD -> PasswordSettingsScreen(onSave = { current, new, confirmation ->
-                        val error = viewModel.changePassword(current, new, confirmation)
-                        dialog = if (error == null) {
-                            viewModel.navigate(WorkSafePage.HOME)
-                            WorkSafeDialogState(WorkSafeDialogKind.SUCCESS, "데모 비밀번호가 변경되었습니다.")
-                        } else {
-                            WorkSafeDialogState(WorkSafeDialogKind.FAILURE, error)
+                    WorkSafePage.PASSWORD -> PasswordSettingsScreen(busy = viewModel.accountBusy, onSave = { current, new, confirmation ->
+                        scope.launch {
+                            val error = viewModel.changePassword(current, new, confirmation)
+                            if (error == null) {
+                                loginError = null
+                                dialog = WorkSafeDialogState(WorkSafeDialogKind.SUCCESS, "비밀번호가 변경되었습니다. 다시 로그인하세요.")
+                            } else dialog = WorkSafeDialogState(WorkSafeDialogKind.FAILURE, error)
                         }
                     })
-                    WorkSafePage.WITHDRAW -> WithdrawScreen(onWithdraw = {
-                        dialog = WorkSafeDialogState(
-                            WorkSafeDialogKind.CONFIRM_WITHDRAWAL,
-                            "현재 데모 계정을 비활성화합니다. 앱 프로세스를 재시작하기 전까지 로그인할 수 없습니다."
-                        )
-                    })
+                    WorkSafePage.WITHDRAW -> WithdrawScreen(
+                        server = viewModel.serverAddress, workerId = profile.workerId, busy = viewModel.accountBusy,
+                        onWithdraw = { password ->
+                            scope.launch {
+                                val error = viewModel.withdraw(password)
+                                if (error == null) {
+                                    loginError = null
+                                    dialog = WorkSafeDialogState(WorkSafeDialogKind.SUCCESS, "계정이 삭제되었습니다.")
+                                } else dialog = WorkSafeDialogState(WorkSafeDialogKind.FAILURE, error)
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -173,15 +188,7 @@ fun MainScreen(
         WorkSafeDialog(
             state = state,
             onDismiss = { dialog = null },
-            onConfirmWithdrawal = {
-                viewModel.withdraw()
-                loginError = null
-                menuExpanded = false
-                dialog = WorkSafeDialogState(
-                    WorkSafeDialogKind.SUCCESS,
-                    "데모 계정이 비활성화되었습니다. 앱 프로세스를 재시작하면 초기화됩니다."
-                )
-            }
+            onConfirmWithdrawal = { dialog = null }
         )
     }
 }

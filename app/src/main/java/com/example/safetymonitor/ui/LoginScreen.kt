@@ -24,10 +24,13 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun LoginScreen(
-    onLogin: (String, String) -> Unit,
+    onLogin: (String, String, String) -> Unit,
+    serverAddress: String,
+    busy: Boolean,
     errorMessage: String?,
     modifier: Modifier = Modifier
 ) {
+    var server by remember { mutableStateOf(serverAddress) }
     var workerId by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
@@ -43,6 +46,14 @@ fun LoginScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        WorkSafeField(
+            label = "서버 주소", value = server, onValueChange = { server = it },
+            keyboardType = KeyboardType.Uri, enabled = !busy, outlined = true
+        )
+        if (server.trim().startsWith("http://", ignoreCase = true)) {
+            Text("HTTP 연결은 암호화되지 않아 비밀번호가 노출될 수 있습니다.",
+                color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
 
         WorkSafeField(
             label = "작업자 ID",
@@ -51,7 +62,7 @@ fun LoginScreen(
             placeholder = "숫자 ID 입력",
             keyboardType = KeyboardType.Number,
             imeAction = ImeAction.Next,
-            outlined = true
+            outlined = true, enabled = !busy
         )
         WorkSafeField(
             label = "비밀번호",
@@ -60,8 +71,8 @@ fun LoginScreen(
             placeholder = "비밀번호 입력",
             password = true,
             imeAction = ImeAction.Done,
-            onDone = { onLogin(workerId, password) },
-            outlined = true
+            onDone = { if (!busy) { val submitted = password; password = ""; onLogin(server, workerId, submitted) } },
+            outlined = true, enabled = !busy
         )
 
         if (errorMessage != null) {
@@ -82,26 +93,11 @@ fun LoginScreen(
         }
 
         WorkSafeButton(
-            text = "로그인",
-            onClick = { onLogin(workerId, password) },
+            text = if (busy) "로그인 중…" else "로그인",
+            onClick = { if (!busy) { val submitted = password; password = ""; onLogin(server, workerId, submitted) } },
             modifier = Modifier.fillMaxWidth(),
-            emphasized = true
+            emphasized = true, enabled = !busy
         )
 
-        WorkSafeCard(muted = true) {
-            Text(
-                "개발용 데모 · 실제 인증 아님",
-                style = MaterialTheme.typography.titleMedium
-            )
-            Text(
-                "데모 계정 ID 1024 · 초기 비밀번호 0000",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                "계정·프로필·변경 비밀번호는 앱을 완전히 종료하고 다시 실행하면 초기화됩니다.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
     }
 }

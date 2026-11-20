@@ -16,6 +16,7 @@ import com.example.safetymonitor.MainActivity
 import com.example.safetymonitor.R
 import com.example.safetymonitor.detection.DetectionStatus
 import com.example.safetymonitor.sos.SosController
+import com.example.safetymonitor.sos.SosStore
 import android.content.pm.ApplicationInfo
 
 /** Continues accelerometer + gyroscope monitoring independently of the Activity. */
@@ -48,18 +49,24 @@ class FallMonitoringService : Service() {
 
     @SuppressLint("WakelockTimeout") // Held only for the logged-in monitoring session; released in onDestroy.
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // A queued start must not restart sensing after logout.
-        if (!isEnabled(this)) {
-            stopSelf()
-            return START_NOT_STICKY
-        }
+        // Android requires foreground acknowledgement even for a rejected queued start.
+        val canMonitor = isEnabled(this) && SosStore.session.value?.valid() == true
         if (!started) {
-            val notification = notification("가속도·자이로 센서로 낙상을 감지합니다.")
+            val notification = notification(
+                if (canMonitor) "가속도·자이로 센서로 낙상을 감지합니다."
+                else "유효한 로그인이 없어 측정을 종료합니다."
+            )
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+        }
+        if (!canMonitor) {
+            stop(this)
+            return START_NOT_STICKY
+        }
+        if (!started) {
             started = true
             wakeLock = getSystemService(PowerManager::class.java)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:FallMonitoring")

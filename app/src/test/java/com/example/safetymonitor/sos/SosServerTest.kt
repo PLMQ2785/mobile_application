@@ -1,6 +1,9 @@
 package com.example.safetymonitor.sos
 
 import org.json.JSONObject
+import com.example.safetymonitor.network.WorkerApiClient
+import com.example.safetymonitor.network.WorkerLoginRequest
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 import java.net.ServerSocket
@@ -48,8 +51,9 @@ class SosServerTest {
     private fun session(url: String) = SosSession(url, 77, "test-token", Instant.parse("2099-01-01T00:00:00Z"))
 
     @Test fun loginUsesWorkerApiAndReturnsTokenSession() {
-        server(200, """{"accessToken":"test-token","expiresAt":"2099-01-01T00:00:00Z"}""") { url, requests ->
-            val session = SosServer.login(url, 77, "test-password")
+        server(200, """{"accessToken":"test-token","tokenType":"Bearer","expiresAt":"2099-01-01T00:00:00Z"}""") { url, requests ->
+            val token = runBlocking { WorkerApiClient(url, true).login(WorkerLoginRequest(77, "test-password")) }
+            val session = SosSession(url, 77, token.accessToken, token.expiresAt)
             assertEquals(77L, session.workerId)
             assertTrue(session.valid())
             assertEquals("/api/worker/auth/login", requests.single().first)
